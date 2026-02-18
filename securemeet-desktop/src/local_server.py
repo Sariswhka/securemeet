@@ -120,7 +120,12 @@ class SecureMeetRequestHandler(BaseHTTPRequestHandler):
             except (ValueError, TypeError):
                 device_id = None
 
-        success = app.audio_capture.start_recording(device_id)
+        # Import here to avoid circular imports
+        from audio_capture import MixedCapture
+
+        # Always use MixedCapture from extension (captures both mic + system audio)
+        app.audio_capture = MixedCapture()
+        success = app.audio_capture.start_recording(None)
         if success:
             app.is_recording = True
             app.duration_timer.start(1000)

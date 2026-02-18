@@ -83,11 +83,14 @@ class LocalTranscriber:
                 on_progress("Transcribing locally... (no data sent anywhere)")
 
             # Transcribe with timestamps
+            # vad_filter skips silence and prevents Whisper hallucinations on quiet audio
             segments, info = self.model.transcribe(
                 str(audio_path),
                 language=language,
                 beam_size=5,
-                word_timestamps=True
+                word_timestamps=True,
+                vad_filter=True,
+                vad_parameters={"min_silence_duration_ms": 500}
             )
 
             # Process segments
@@ -120,6 +123,17 @@ class LocalTranscriber:
                     "model": f"whisper-{self.model_size}"
                 }
             }
+
+            # Guard: if no real speech detected, return None
+            if not full_text or len(" ".join(full_text).strip()) < 20:
+                if on_progress:
+                    on_progress("No speech detected in recording.")
+                if AUTO_DELETE_AUDIO_AFTER_TRANSCRIPTION:
+                    try:
+                        os.remove(audio_path)
+                    except:
+                        pass
+                return None
 
             # Save transcript locally
             transcript_path = self._save_transcript(transcript, audio_path)

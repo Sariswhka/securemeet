@@ -286,7 +286,7 @@ async function loadDevices() {
 
 async function pollForResults() {
   let attempts = 0;
-  const maxAttempts = 60; // Poll for up to 2 minutes
+  const maxAttempts = 150; // Poll for up to 5 minutes (long recordings take time)
 
   const resultPoll = setInterval(async () => {
     attempts++;
@@ -304,6 +304,10 @@ async function pollForResults() {
 
       if (status.has_transcript && !status.has_summary) {
         statusMsg.textContent = 'Generating summary...';
+        statusMsg.className = 'status-msg processing';
+      } else if (!status.has_transcript && !status.has_summary) {
+        const elapsed = Math.round(attempts * 2);
+        statusMsg.textContent = `Transcribing locally... (${elapsed}s elapsed)`;
         statusMsg.className = 'status-msg processing';
       }
 
