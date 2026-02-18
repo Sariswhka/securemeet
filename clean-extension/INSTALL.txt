@@ -1,0 +1,33 @@
+SecureMeet Chrome Extension - Install Guide
+============================================
+
+PREREQUISITE: SecureMeet Desktop app must be installed and running.
+Location: C:\Users\Richa\OneDrive\Apps\secure\securemeet-desktop
+
+INSTALL THE EXTENSION:
+1. Open Chrome
+2. Go to chrome://extensions
+3. Enable "Developer mode" (top-right toggle)
+4. Click "Load unpacked"
+5. Select THIS folder (clean-extension)
+6. Pin the SecureMeet icon in your toolbar
+
+HOW TO USE:
+1. Launch SecureMeet Desktop app first
+2. Click the SecureMeet icon in Chrome
+3. Verify "Connected" badge is green
+4. Click "Start Recording" during any meeting
+5. Click "Stop Recording" when done
+6. View transcript and summary in the popup
+7. Click "Copy Summary" to copy as Markdown
+
+WORKS WITH:
+- Google Meet (browser)
+- Zoom (browser or desktop app)
+- Microsoft Teams (browser or desktop app)
+- Any app that plays audio through your speakers
+
+PRIVACY:
+- All audio captured and processed locally
+- Extension communicates only with localhost:8765
+- Zero data sent to any cloud service

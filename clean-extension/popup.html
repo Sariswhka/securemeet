@@ -1,0 +1,288 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      width: 380px;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      background: #1a1a2e;
+      color: #eee;
+    }
+
+    /* Header */
+    .header {
+      background: linear-gradient(135deg, #0f3460, #16213e);
+      padding: 16px 20px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      border-bottom: 1px solid #333;
+    }
+    .header h1 {
+      font-size: 18px;
+      font-weight: 700;
+    }
+    .connection-badge {
+      font-size: 11px;
+      padding: 4px 10px;
+      border-radius: 12px;
+      font-weight: 600;
+    }
+    .badge-connected {
+      background: rgba(76, 175, 80, 0.2);
+      color: #4CAF50;
+      border: 1px solid rgba(76, 175, 80, 0.3);
+    }
+    .badge-disconnected {
+      background: rgba(244, 67, 54, 0.2);
+      color: #f44336;
+      border: 1px solid rgba(244, 67, 54, 0.3);
+    }
+
+    /* Sections */
+    .section {
+      padding: 16px 20px;
+      border-bottom: 1px solid #222;
+    }
+    .section-label {
+      font-size: 10px;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      color: #666;
+      margin-bottom: 8px;
+    }
+
+    /* Device selector */
+    select {
+      width: 100%;
+      padding: 10px 12px;
+      background: #16213e;
+      color: #eee;
+      border: 1px solid #333;
+      border-radius: 8px;
+      font-size: 13px;
+      outline: none;
+      cursor: pointer;
+    }
+    select:focus { border-color: #0f3460; }
+
+    /* Record button */
+    .record-btn {
+      width: 100%;
+      padding: 16px;
+      border: none;
+      border-radius: 10px;
+      font-size: 16px;
+      font-weight: 700;
+      cursor: pointer;
+      transition: all 0.2s;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+    }
+    .record-btn.ready {
+      background: #4CAF50;
+      color: white;
+    }
+    .record-btn.ready:hover { background: #45a049; }
+    .record-btn.recording {
+      background: #f44336;
+      color: white;
+      animation: pulse 2s infinite;
+    }
+    .record-btn.recording:hover { background: #da190b; }
+    .record-btn:disabled {
+      background: #333;
+      color: #666;
+      cursor: not-allowed;
+      animation: none;
+    }
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.85; }
+    }
+
+    /* Timer */
+    .timer {
+      font-family: 'Courier New', monospace;
+      font-size: 32px;
+      font-weight: 700;
+      text-align: center;
+      padding: 8px 0;
+      color: #eee;
+    }
+
+    /* Audio level bar */
+    .level-container {
+      width: 100%;
+      height: 6px;
+      background: #333;
+      border-radius: 3px;
+      overflow: hidden;
+      margin: 8px 0;
+    }
+    .level-bar {
+      height: 100%;
+      background: #4CAF50;
+      border-radius: 3px;
+      width: 0%;
+      transition: width 0.3s;
+    }
+
+    /* Meeting detection */
+    .meeting-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 6px 12px;
+      border-radius: 6px;
+      font-size: 12px;
+      font-weight: 600;
+    }
+    .meeting-detected {
+      background: rgba(76, 175, 80, 0.15);
+      color: #81C784;
+      border: 1px solid rgba(76, 175, 80, 0.2);
+    }
+    .meeting-none {
+      background: rgba(255, 255, 255, 0.05);
+      color: #888;
+      border: 1px solid #333;
+    }
+
+    /* Results area */
+    .results {
+      max-height: 300px;
+      overflow-y: auto;
+    }
+    .result-card {
+      background: #16213e;
+      border: 1px solid #333;
+      border-radius: 8px;
+      padding: 12px;
+      margin-bottom: 8px;
+    }
+    .result-card h3 {
+      font-size: 13px;
+      color: #81C784;
+      margin-bottom: 6px;
+    }
+    .result-card p, .result-card li {
+      font-size: 12px;
+      color: #bbb;
+      line-height: 1.5;
+    }
+    .result-card ul {
+      padding-left: 16px;
+    }
+
+    /* Action buttons */
+    .action-row {
+      display: flex;
+      gap: 8px;
+    }
+    .action-btn {
+      flex: 1;
+      padding: 10px;
+      border: 1px solid #333;
+      border-radius: 8px;
+      background: #16213e;
+      color: #eee;
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s;
+      text-align: center;
+    }
+    .action-btn:hover {
+      background: #1a4a7a;
+      border-color: #0f3460;
+    }
+
+    /* Privacy footer */
+    .footer {
+      padding: 12px 20px;
+      text-align: center;
+      font-size: 10px;
+      color: #4CAF50;
+      border-top: 1px solid #222;
+    }
+
+    /* Status messages */
+    .status-msg {
+      font-size: 12px;
+      color: #888;
+      text-align: center;
+      padding: 8px 0;
+    }
+    .status-msg.processing {
+      color: #FFA726;
+    }
+    .status-msg.error {
+      color: #f44336;
+    }
+
+    /* Hidden */
+    .hidden { display: none; }
+
+    /* Scrollbar */
+    .results::-webkit-scrollbar { width: 4px; }
+    .results::-webkit-scrollbar-track { background: transparent; }
+    .results::-webkit-scrollbar-thumb { background: #333; border-radius: 2px; }
+  </style>
+</head>
+<body>
+
+  <!-- Header -->
+  <div class="header">
+    <h1>SecureMeet</h1>
+    <span id="connectionBadge" class="connection-badge badge-disconnected">Checking...</span>
+  </div>
+
+  <!-- Meeting Detection -->
+  <div class="section">
+    <div id="meetingStatus" class="meeting-badge meeting-none">
+      No meeting detected
+    </div>
+  </div>
+
+  <!-- Audio Device -->
+  <div class="section">
+    <div class="section-label">Audio Source</div>
+    <select id="deviceSelect">
+      <option value="">Connecting to Desktop app...</option>
+    </select>
+  </div>
+
+  <!-- Recording Controls -->
+  <div class="section">
+    <div class="timer" id="timer">00:00:00</div>
+    <div class="level-container">
+      <div class="level-bar" id="levelBar"></div>
+    </div>
+    <button id="recordBtn" class="record-btn ready" disabled>Start Recording</button>
+    <div id="statusMsg" class="status-msg">Launch SecureMeet Desktop to begin</div>
+  </div>
+
+  <!-- Results -->
+  <div id="resultsSection" class="section hidden">
+    <div class="section-label">Results</div>
+    <div class="results" id="resultsArea"></div>
+    <div class="action-row" id="actionRow" style="margin-top: 8px;">
+      <button class="action-btn" id="copyBtn">Copy Summary</button>
+      <button class="action-btn" id="refreshBtn">Refresh</button>
+    </div>
+  </div>
+
+  <!-- Privacy Footer -->
+  <div class="footer">
+    100% Private - All processing on your device - No data sent to cloud
+  </div>
+
+  <script src="popup.js"></script>
+</body>
+</html>

@@ -1,0 +1,34 @@
+{
+  "manifest_version": 3,
+  "name": "SecureMeet",
+  "version": "2.0.0",
+  "description": "Privacy-first meeting minutes - connects to SecureMeet Desktop for local audio capture, transcription, and summarization.",
+  "permissions": ["activeTab", "storage", "tabs", "scripting"],
+  "host_permissions": [
+    "https://*.zoom.us/*",
+    "https://*.zoom.com/*",
+    "https://*.zoomgov.com/*",
+    "https://teams.microsoft.com/*",
+    "https://meet.google.com/*",
+    "http://localhost:8765/*",
+    "http://127.0.0.1:8765/*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://*.zoom.us/*",
+        "https://*.zoom.com/*",
+        "https://*.zoomgov.com/*",
+        "https://teams.microsoft.com/*",
+        "https://meet.google.com/*"
+      ],
+      "js": ["content.js"]
+    }
+  ],
+  "action": {
+    "default_popup": "popup.html"
+  }
+}

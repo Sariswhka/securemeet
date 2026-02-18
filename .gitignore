@@ -1,0 +1,40 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+
+# Virtual environment
+venv/
+env/
+.venv/
+
+# PyInstaller build artifacts
+build/
+dist/
+*.spec
+
+# Environment / secrets
+.env
+*.env
+*.key
+
+# Package zips (attached as GitHub Releases, not committed)
+*.zip
+
+# IDE
+.vscode/
+.idea/
+*.swp
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Old/internal planning files
+"Architecture plan for chrome+desktop solution.ini"
+meeting-minutes-app.jsx
+Install Files/
+nul

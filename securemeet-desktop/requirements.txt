@@ -1,0 +1,26 @@
+# SecureMeet Desktop - Requirements
+# Privacy-first meeting minutes generator
+
+# UI Framework
+PyQt6>=6.6.0
+
+# Audio Capture & Processing
+sounddevice>=0.4.6
+numpy>=1.24.0
+scipy>=1.11.0
+
+# Local Transcription (Whisper)
+faster-whisper>=1.0.0
+
+# AI Summarization
+anthropic>=0.18.0
+
+# Storage & Security
+cryptography>=41.0.0
+
+# Utilities
+python-dotenv>=1.0.0
+pydub>=0.25.1
+
+# Packaging (dev)
+pyinstaller>=6.0.0
