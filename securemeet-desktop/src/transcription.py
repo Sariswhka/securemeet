@@ -83,12 +83,14 @@ class LocalTranscriber:
                 on_progress("Transcribing locally... (no data sent anywhere)")
 
             # Transcribe with timestamps
+            # beam_size=1 is ~3x faster than 5 with minimal quality loss on CPU
+            # word_timestamps disabled — major speed improvement, not needed for summaries
             # vad_filter skips silence and prevents Whisper hallucinations on quiet audio
             segments, info = self.model.transcribe(
                 str(audio_path),
                 language=language,
-                beam_size=5,
-                word_timestamps=True,
+                beam_size=1,
+                word_timestamps=False,
                 vad_filter=True,
                 vad_parameters={"min_silence_duration_ms": 500}
             )
