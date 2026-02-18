@@ -540,8 +540,15 @@ class SecureMeetApp(QMainWindow):
     def on_transcription_complete(self, transcript):
         """Handle completed transcription - auto-generate summary"""
         self.current_transcript = transcript
+        if not transcript:
+            self.status_label.setText(
+                "No speech detected. Make sure audio is playing and Stereo Mix is enabled."
+            )
+            self.status_label.setStyleSheet("color: #FFA726; padding: 10px;")
+            return
         if transcript:
             self.generate_btn.setEnabled(True)
+            self.status_label.setStyleSheet("color: #888; padding: 10px;")
             self.summary_display.setText(
                 f"Transcript ready ({transcript.get('duration', 0):.1f}s)\n\n"
                 f"Preview:\n{transcript.get('full_text', '')[:500]}..."

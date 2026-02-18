@@ -317,7 +317,7 @@ async function pollForResults() {
 
     if (attempts >= maxAttempts) {
       clearInterval(resultPoll);
-      statusMsg.textContent = 'Timed out waiting for results. Check Desktop app.';
+      statusMsg.textContent = 'No speech detected. Ensure audio is playing and Stereo Mix is enabled in Windows Sound settings.';
       statusMsg.className = 'status-msg error';
     }
   }, 2000);
