@@ -29,7 +29,7 @@ from config import (
     APP_NAME, APP_VERSION, WINDOW_WIDTH, WINDOW_HEIGHT,
     SUMMARIES_DIR, TRANSCRIPTS_DIR
 )
-from audio_capture import AudioCapture
+from audio_capture import AudioCapture, MixedCapture
 from transcription import LocalTranscriber
 from summarization import MeetingSummarizer, format_summary_for_display
 from local_server import SecureMeetLocalServer
@@ -431,10 +431,13 @@ class SecureMeetApp(QMainWindow):
         self.device_combo.clear()
         devices = self.audio_capture.get_audio_devices()
 
-        # Add loopback option first
+        # Mixed capture always first — captures both sides of conversation
+        self.device_combo.addItem("🎤+🔊 Mixed (Mic + System) — Recommended", "mixed")
+
+        # Add loopback option
         loopback_id = self.audio_capture.get_loopback_device()
         if loopback_id is not None:
-            self.device_combo.addItem("🔊 System Audio (Recommended)", loopback_id)
+            self.device_combo.addItem("🔊 System Audio Only", loopback_id)
 
         for device in devices:
             self.device_combo.addItem(f"🎤 {device['name']}", device['id'])
@@ -452,6 +455,13 @@ class SecureMeetApp(QMainWindow):
     def start_recording(self):
         """Start audio recording"""
         device_id = self.device_combo.currentData()
+
+        # Switch capture type based on selection
+        if device_id == "mixed":
+            self.audio_capture = MixedCapture()
+            device_id = None
+        else:
+            self.audio_capture = AudioCapture()
 
         if self.audio_capture.start_recording(device_id):
             self.is_recording = True

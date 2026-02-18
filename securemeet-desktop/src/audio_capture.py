@@ -197,3 +197,101 @@ class MicrophoneCapture(AudioCapture):
         if device_id is None:
             device_id = self.get_default_microphone()
         return super().start_recording(device_id)
+
+
+class MixedCapture(AudioCapture):
+    """
+    Captures system audio + microphone simultaneously and mixes them.
+    Ensures both sides of a conversation are captured:
+      - System audio (Stereo Mix / loopback) → other participants
+      - Microphone → your own voice
+    """
+
+    def __init__(self, on_audio_chunk: Optional[Callable] = None):
+        super().__init__(on_audio_chunk)
+        self.mic_stream = None
+        self.mic_data = []
+
+    def _mic_callback(self, indata, frames, time_info, status):
+        """Callback for microphone stream"""
+        self.mic_data.append(indata.copy())
+
+    def start_recording(self, device_id: Optional[int] = None) -> bool:
+        """Start system audio + microphone streams simultaneously"""
+        self.mic_data = []
+
+        # Start system audio (loopback) via parent
+        loopback_id = self.get_loopback_device()
+        system_ok = super().start_recording(loopback_id)
+
+        # Start microphone stream independently
+        try:
+            mic_id = sd.default.device[0]
+            self.mic_stream = sd.InputStream(
+                device=mic_id,
+                samplerate=SAMPLE_RATE,
+                channels=CHANNELS,
+                callback=self._mic_callback,
+                blocksize=int(SAMPLE_RATE * 0.5)
+            )
+            self.mic_stream.start()
+            print("Microphone stream started")
+        except Exception as e:
+            print(f"Microphone stream failed (system audio only): {e}")
+            self.mic_stream = None
+
+        return system_ok
+
+    def stop_recording(self) -> Optional[Path]:
+        """Stop both streams, mix audio, save combined file"""
+        if not self.is_recording:
+            return None
+
+        self.is_recording = False
+
+        # Stop system audio stream
+        try:
+            self.stream.stop()
+            self.stream.close()
+        except Exception as e:
+            print(f"Error stopping system stream: {e}")
+
+        # Stop microphone stream
+        if self.mic_stream:
+            try:
+                self.mic_stream.stop()
+                self.mic_stream.close()
+            except Exception as e:
+                print(f"Error stopping mic stream: {e}")
+            self.mic_stream = None
+
+        if not self.recorded_data and not self.mic_data:
+            return None
+
+        # Build system audio array
+        system_audio = np.concatenate(self.recorded_data, axis=0) if self.recorded_data else None
+
+        # Build microphone audio array
+        mic_audio = np.concatenate(self.mic_data, axis=0) if self.mic_data else None
+
+        # Mix: average both signals aligned to shortest length
+        if system_audio is not None and mic_audio is not None:
+            min_len = min(len(system_audio), len(mic_audio))
+            mixed = system_audio[:min_len] * 0.6 + mic_audio[:min_len] * 0.4
+        elif system_audio is not None:
+            mixed = system_audio
+        else:
+            mixed = mic_audio
+
+        # Save mixed audio file
+        timestamp = self.start_time.strftime("%Y%m%d_%H%M%S")
+        filename = f"meeting_{timestamp}.wav"
+        filepath = RECORDINGS_DIR / filename
+
+        audio_normalized = (mixed * 32767).astype(np.int16)
+        wavfile.write(str(filepath), SAMPLE_RATE, audio_normalized)
+
+        duration = len(mixed) / SAMPLE_RATE
+        print(f"Mixed recording saved: {filepath} ({duration:.1f}s)")
+
+        return filepath
