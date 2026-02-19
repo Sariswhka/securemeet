@@ -1,13 +1,21 @@
 """
 Transcription Module
-Uses faster-whisper for 100% LOCAL transcription
-No audio data is ever sent to any server
+Uses faster-whisper for 100% LOCAL transcription via a subprocess.
+No audio data is ever sent to any server.
+
+WHY SUBPROCESS?
+PyQt6 and ctranslate2 (the C++ backend of faster-whisper) segfault together
+on Windows due to a DLL conflict. Running transcription in a separate Python
+process avoids this entirely.
 """
 import os
+import sys
+import json
+import subprocess
+import tempfile
 from pathlib import Path
 from typing import Optional, Callable, List, Dict
 from datetime import datetime
-import json
 
 from config import (
     WHISPER_MODEL,
@@ -15,47 +23,29 @@ from config import (
     AUTO_DELETE_AUDIO_AFTER_TRANSCRIPTION
 )
 
+# Path to the worker script (same directory as this file)
+_WORKER_SCRIPT = Path(__file__).parent / "transcribe_worker.py"
+# Python executable to use for the subprocess
+_PYTHON_EXE = sys.executable
+
 
 class LocalTranscriber:
     """
-    Local transcription using faster-whisper.
-    ALL PROCESSING HAPPENS ON YOUR MACHINE.
+    Local transcription using faster-whisper — runs in a subprocess
+    to avoid the PyQt6 + ctranslate2 DLL conflict on Windows.
     """
 
     def __init__(self, model_size: str = WHISPER_MODEL):
         self.model_size = model_size
+        # Keep these for API compatibility — subprocess approach doesn't need them
         self.model = None
-        self._is_loaded = False
+        self._is_loaded = True  # Always "ready" — subprocess handles model loading
 
     def load_model(self, on_progress: Optional[Callable] = None) -> bool:
-        """
-        Load Whisper model locally.
-        First run will download the model (~150MB for base).
-        Model is cached locally for future use.
-        """
-        try:
-            if on_progress:
-                on_progress("Loading Whisper model locally...")
-
-            from faster_whisper import WhisperModel
-
-            # Use CPU by default (works everywhere)
-            # Can use 'cuda' for NVIDIA GPU acceleration
-            self.model = WhisperModel(
-                self.model_size,
-                device="cpu",
-                compute_type="int8"  # Optimized for CPU
-            )
-
-            self._is_loaded = True
-            if on_progress:
-                on_progress("Model loaded successfully!")
-
-            return True
-
-        except Exception as e:
-            print(f"Failed to load model: {e}")
-            return False
+        """No-op — model is loaded inside the subprocess on demand."""
+        if on_progress:
+            on_progress("Ready (transcription runs in isolated process)")
+        return True
 
     def transcribe(
         self,
@@ -64,91 +54,93 @@ class LocalTranscriber:
         language: str = "en"
     ) -> Optional[Dict]:
         """
-        Transcribe audio file locally.
-
-        Args:
-            audio_path: Path to audio file
-            on_progress: Callback for progress updates
-            language: Language code (en, es, fr, etc.)
-
-        Returns:
-            Dict with transcript and metadata
+        Transcribe audio file by spawning a subprocess.
+        The subprocess loads faster-whisper without PyQt6, avoiding the segfault.
         """
-        if not self._is_loaded:
-            if not self.load_model(on_progress):
-                return None
+        if on_progress:
+            on_progress("Starting transcription process...")
+
+        # Write result to a temp JSON file
+        with tempfile.NamedTemporaryFile(suffix=".json", delete=False) as tmp:
+            output_path = Path(tmp.name)
 
         try:
+            env = os.environ.copy()
+            env["WHISPER_MODEL"] = self.model_size
+
+            proc = subprocess.Popen(
+                [_PYTHON_EXE, str(_WORKER_SCRIPT), str(audio_path), str(output_path)],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                env=env
+            )
+
             if on_progress:
                 on_progress("Transcribing locally... (no data sent anywhere)")
 
-            # Transcribe with timestamps
-            # beam_size=1 is ~3x faster than 5 with minimal quality loss on CPU
-            # word_timestamps disabled — major speed improvement, not needed for summaries
-            # vad_filter skips silence and prevents Whisper hallucinations on quiet audio
-            segments, info = self.model.transcribe(
-                str(audio_path),
-                language=language,
-                beam_size=1,
-                word_timestamps=False,
-                vad_filter=True,
-                vad_parameters={"min_silence_duration_ms": 500}
-            )
+            # Stream stderr progress lines while waiting
+            for line in proc.stderr:
+                msg = line.decode("utf-8", errors="replace").strip()
+                if msg and on_progress:
+                    on_progress(f"Transcribing: {msg}")
 
-            # Process segments
-            transcript_segments = []
-            full_text = []
+            proc.wait()
 
-            for segment in segments:
-                segment_data = {
-                    "start": segment.start,
-                    "end": segment.end,
-                    "text": segment.text.strip()
-                }
-                transcript_segments.append(segment_data)
-                full_text.append(segment.text.strip())
-
+            if proc.returncode != 0:
                 if on_progress:
-                    on_progress(f"Transcribed: {segment.end:.1f}s")
+                    on_progress("Transcription process failed")
+                return None
 
-            # Create transcript object
-            transcript = {
-                "audio_file": str(audio_path.name),
-                "language": info.language,
-                "duration": info.duration,
-                "transcribed_at": datetime.now().isoformat(),
-                "full_text": " ".join(full_text),
-                "segments": transcript_segments,
-                "privacy": {
-                    "processed_locally": True,
-                    "data_sent_to_server": False,
-                    "model": f"whisper-{self.model_size}"
-                }
-            }
+            # Read result JSON
+            if not output_path.exists():
+                if on_progress:
+                    on_progress("No output from transcription process")
+                return None
 
-            # Guard: if no real speech detected, return None
-            if not full_text or len(" ".join(full_text).strip()) < 20:
+            result = json.loads(output_path.read_text(encoding="utf-8"))
+
+            if "error" in result:
+                if on_progress:
+                    on_progress(f"Transcription error: {result['error']}")
+                return None
+
+            if result.get("no_speech"):
                 if on_progress:
                     on_progress("No speech detected in recording.")
                 if AUTO_DELETE_AUDIO_AFTER_TRANSCRIPTION:
                     try:
                         os.remove(audio_path)
-                    except:
+                    except Exception:
                         pass
                 return None
+
+            # Build transcript dict
+            transcript = {
+                "audio_file": result.get("audio_file", audio_path.name),
+                "language": result.get("language", "en"),
+                "duration": result.get("duration", 0),
+                "transcribed_at": result.get("transcribed_at", datetime.now().isoformat()),
+                "full_text": result.get("full_text", ""),
+                "segments": result.get("segments", []),
+                "privacy": result.get("privacy", {
+                    "processed_locally": True,
+                    "data_sent_to_server": False,
+                    "model": f"whisper-{self.model_size}"
+                })
+            }
 
             # Save transcript locally
             transcript_path = self._save_transcript(transcript, audio_path)
             transcript["transcript_file"] = str(transcript_path)
 
-            # Optionally delete audio after transcription for privacy
+            # Delete audio for privacy
             if AUTO_DELETE_AUDIO_AFTER_TRANSCRIPTION:
                 try:
                     os.remove(audio_path)
                     transcript["audio_deleted"] = True
                     if on_progress:
                         on_progress("Audio file deleted for privacy")
-                except:
+                except Exception:
                     pass
 
             if on_progress:
@@ -161,6 +153,13 @@ class LocalTranscriber:
             if on_progress:
                 on_progress(f"Error: {e}")
             return None
+
+        finally:
+            # Clean up temp file
+            try:
+                output_path.unlink(missing_ok=True)
+            except Exception:
+                pass
 
     def _save_transcript(self, transcript: Dict, audio_path: Path) -> Path:
         """Save transcript to local file"""

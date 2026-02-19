@@ -10,10 +10,23 @@ HOW IT WORKS:
 """
 import sys
 import os
+import logging
 from pathlib import Path
 
 # Add src to path
 sys.path.insert(0, str(Path(__file__).parent))
+
+# Real-time debug log — watch this to trace crashes
+_log_path = Path.home() / ".securemeet" / "debug.log"
+_log_path.parent.mkdir(parents=True, exist_ok=True)
+logging.basicConfig(
+    filename=str(_log_path),
+    level=logging.DEBUG,
+    format="%(asctime)s %(levelname)s %(message)s",
+    force=True
+)
+log = logging.getLogger("securemeet")
+log.info("=== SecureMeet starting ===")
 
 
 from PyQt6.QtWidgets import (
@@ -60,6 +73,11 @@ class WorkerThread(QThread):
 class SecureMeetApp(QMainWindow):
     """Main application window"""
 
+    # Thread-safe signals — emitted from the HTTP server thread,
+    # delivered to the Qt main thread via the event loop
+    _recording_started_from_server = pyqtSignal()
+    _recording_stopped_from_server = pyqtSignal(object)  # audio_path or None
+
     def __init__(self):
         super().__init__()
 
@@ -81,9 +99,17 @@ class SecureMeetApp(QMainWindow):
         self.duration_timer = QTimer()
         self.duration_timer.timeout.connect(self.update_duration)
 
+        # Wire up thread-safe signals from HTTP server
+        self._recording_started_from_server.connect(self._update_ui_recording_started)
+        self._recording_stopped_from_server.connect(self._on_stopped_from_server)
+
         # Start local HTTP server for Chrome extension bridge
         self.local_server = SecureMeetLocalServer(app=self)
         self.local_server.start()
+
+        # Transcription runs in a subprocess (transcribe_worker.py) to avoid
+        # the PyQt6 + ctranslate2 segfault on Windows. No pre-loading needed.
+        log.info("App ready — transcription uses subprocess isolation")
 
     def init_ui(self):
         """Initialize the user interface"""
@@ -535,20 +561,32 @@ class SecureMeetApp(QMainWindow):
 
     def transcribe_audio(self, audio_path):
         """Transcribe audio in background thread"""
+        log.info(f"STEP 3: transcribe_audio called, path={audio_path}")
+
         def do_transcribe():
-            return self.transcriber.transcribe(
-                audio_path,
-                on_progress=lambda msg: self.worker.progress.emit(msg)
-            )
+            log.info("STEP 4: WorkerThread running do_transcribe()")
+            try:
+                result = self.transcriber.transcribe(
+                    audio_path,
+                    on_progress=lambda msg: self.worker.progress.emit(msg)
+                )
+                log.info(f"STEP 5: transcribe() returned, result={'dict' if result else 'None'}")
+                return result
+            except Exception as e:
+                log.error(f"STEP 5 ERROR: transcribe() raised exception: {e}", exc_info=True)
+                raise
 
         self.worker = WorkerThread(do_transcribe)
         self.worker.progress.connect(self.status_label.setText)
         self.worker.finished.connect(self.on_transcription_complete)
-        self.worker.error.connect(lambda e: self.status_label.setText(f"Error: {e}"))
+        self.worker.error.connect(lambda e: (log.error(f"STEP 5 ERROR signal: {e}"), self.status_label.setText(f"Error: {e}")))
+        log.info("STEP 3b: Starting WorkerThread...")
         self.worker.start()
+        log.info("STEP 3c: WorkerThread started")
 
     def on_transcription_complete(self, transcript):
         """Handle completed transcription - auto-generate summary"""
+        log.info(f"STEP 6: on_transcription_complete called, transcript={'present' if transcript else 'None'}")
         self.current_transcript = transcript
         if not transcript:
             self.status_label.setText(
@@ -564,6 +602,7 @@ class SecureMeetApp(QMainWindow):
                 f"Preview:\n{transcript.get('full_text', '')[:500]}..."
             )
             # Auto-generate summary
+            log.info("STEP 7: Transcript ready, calling generate_summary()")
             self.status_label.setText("Generating summary...")
             self.generate_summary()
         else:
@@ -571,7 +610,9 @@ class SecureMeetApp(QMainWindow):
 
     def generate_summary(self):
         """Generate meeting summary"""
+        log.info("STEP 8: generate_summary() called")
         if not self.current_transcript:
+            log.warning("STEP 8: No transcript, returning early")
             return
 
         title = self.title_input.text() or "Meeting"
@@ -580,20 +621,30 @@ class SecureMeetApp(QMainWindow):
         self.generate_btn.setEnabled(False)
 
         def do_summarize():
-            return self.summarizer.summarize(
-                self.current_transcript,
-                meeting_title=title,
-                on_progress=lambda msg: self.worker.progress.emit(msg)
-            )
+            log.info("STEP 9: WorkerThread running do_summarize()")
+            try:
+                result = self.summarizer.summarize(
+                    self.current_transcript,
+                    meeting_title=title,
+                    on_progress=lambda msg: self.worker.progress.emit(msg)
+                )
+                log.info(f"STEP 9b: summarize() returned, result={'dict' if result else 'None'}")
+                return result
+            except Exception as e:
+                log.error(f"STEP 9 ERROR: summarize() raised exception: {e}", exc_info=True)
+                raise
 
         self.worker = WorkerThread(do_summarize)
         self.worker.progress.connect(self.progress_label.setText)
         self.worker.finished.connect(self.on_summary_complete)
         self.worker.error.connect(self.on_summary_error)
+        log.info("STEP 8b: Starting summary WorkerThread...")
         self.worker.start()
+        log.info("STEP 8c: Summary WorkerThread started")
 
     def on_summary_complete(self, summary):
         """Handle completed summary"""
+        log.info(f"STEP 10: on_summary_complete called, summary={'present' if summary else 'None'}")
         self.progress_bar.setVisible(False)
         self.generate_btn.setEnabled(True)
         self.current_summary = summary
@@ -607,6 +658,7 @@ class SecureMeetApp(QMainWindow):
 
     def on_summary_error(self, error):
         """Handle summary error"""
+        log.error(f"STEP 10 ERROR: on_summary_error called: {error}")
         self.progress_bar.setVisible(False)
         self.generate_btn.setEnabled(True)
         self.status_label.setText(f"Error: {error}")
@@ -653,7 +705,9 @@ class SecureMeetApp(QMainWindow):
             )
 
     def _update_ui_recording_started(self):
-        """Update UI when recording is started via the local server (Chrome extension)"""
+        """Update UI when recording is started via the local server (Chrome extension).
+        Always called from the Qt main thread via signal."""
+        self.duration_timer.start(1000)
         self.record_btn.setText("⏹️ Stop Recording")
         self.record_btn.setStyleSheet("""
             QPushButton {
@@ -680,6 +734,20 @@ class SecureMeetApp(QMainWindow):
             QPushButton:hover { background: #45a049; }
         """)
 
+    def _on_stopped_from_server(self, audio_path):
+        """Handle stop + transcription trigger safely in the Qt main thread.
+        Called via _recording_stopped_from_server signal from HTTP server thread."""
+        log.info(f"STEP 1: _on_stopped_from_server called, audio_path={audio_path}")
+        self.duration_timer.stop()
+        self._update_ui_recording_stopped()
+        if audio_path:
+            log.info("STEP 2: Starting transcription worker...")
+            self.status_label.setText("Transcribing locally... (you can close the popup)")
+            self.transcribe_audio(audio_path)
+        else:
+            log.warning("STEP 2: No audio captured (audio_path is None)")
+            self.status_label.setText("No audio captured")
+
     def closeEvent(self, event):
         """Stop the local server when the app is closed"""
         self.local_server.stop()
@@ -702,13 +770,33 @@ class SecureMeetApp(QMainWindow):
 
 def main():
     """Main entry point"""
-    app = QApplication(sys.argv)
-    app.setApplicationName(APP_NAME)
+    import traceback
+    from pathlib import Path
 
-    window = SecureMeetApp()
-    window.show()
+    log_path = Path.home() / ".securemeet" / "error.log"
+    log_path.parent.mkdir(parents=True, exist_ok=True)
 
-    sys.exit(app.exec())
+    def handle_exception(exc_type, exc_value, exc_tb):
+        """Write unhandled exceptions to log file"""
+        import datetime
+        msg = f"\n[{datetime.datetime.now()}] Unhandled exception:\n"
+        msg += "".join(traceback.format_exception(exc_type, exc_value, exc_tb))
+        with open(log_path, 'a') as f:
+            f.write(msg)
+        # Also print to stderr if available
+        print(msg, file=sys.stderr)
+
+    sys.excepthook = handle_exception
+
+    try:
+        app = QApplication(sys.argv)
+        app.setApplicationName(APP_NAME)
+        window = SecureMeetApp()
+        window.show()
+        sys.exit(app.exec())
+    except Exception:
+        handle_exception(*sys.exc_info())
+        raise
 
 
 if __name__ == "__main__":

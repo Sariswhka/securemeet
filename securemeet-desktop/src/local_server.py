@@ -89,9 +89,16 @@ class SecureMeetRequestHandler(BaseHTTPRequestHandler):
             })
             return
 
+        is_transcribing = (
+            not app.is_recording and
+            hasattr(app, 'worker') and
+            app.worker is not None and
+            app.worker.isRunning()
+        )
         self._send_json(200, {
             "running": True,
             "recording": app.is_recording,
+            "is_transcribing": is_transcribing,
             "has_transcript": app.current_transcript is not None,
             "has_summary": app.current_summary is not None,
             "duration": app.audio_capture.get_duration() if app.is_recording else 0,
@@ -128,10 +135,9 @@ class SecureMeetRequestHandler(BaseHTTPRequestHandler):
         success = app.audio_capture.start_recording(None)
         if success:
             app.is_recording = True
-            app.duration_timer.start(1000)
-            # Update UI from server thread safely
-            if hasattr(app, '_update_ui_recording_started'):
-                app._update_ui_recording_started()
+            # Emit signal so Qt main thread starts timer and updates UI safely
+            if hasattr(app, '_recording_started_from_server'):
+                app._recording_started_from_server.emit()
             self._send_json(200, {"success": True, "message": "Recording started"})
         else:
             self._send_json(500, {"error": "Failed to start recording. Check audio device."})
@@ -147,30 +153,26 @@ class SecureMeetRequestHandler(BaseHTTPRequestHandler):
             self._send_json(409, {"error": "Not recording"})
             return
 
-        # Stop recording
-        app.duration_timer.stop()
+        # Stop the audio streams (non-Qt, safe from any thread)
         audio_path = app.audio_capture.stop_recording()
         app.is_recording = False
 
-        # Update UI
-        if hasattr(app, '_update_ui_recording_stopped'):
-            app._update_ui_recording_stopped()
-
         if audio_path:
-            # Transcribe synchronously for the API response,
-            # but in a background thread so we don't block forever
             self._send_json(200, {
                 "success": True,
                 "message": "Recording stopped. Transcription starting...",
                 "audio_file": str(audio_path)
             })
-            # Trigger transcription in the app (runs in background thread)
-            app.transcribe_audio(audio_path)
         else:
             self._send_json(200, {
                 "success": True,
                 "message": "Recording stopped. No audio captured."
             })
+
+        # Emit signal so Qt main thread stops timer, updates UI, and starts transcription
+        # This is the safe way to hand off from the HTTP server thread to Qt's main thread
+        if hasattr(app, '_recording_stopped_from_server'):
+            app._recording_stopped_from_server.emit(audio_path)
 
     def _handle_get_transcript(self):
         """GET /transcript - Get the latest transcript"""

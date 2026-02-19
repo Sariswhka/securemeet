@@ -89,6 +89,14 @@ async function checkConnection() {
       statusMsg.textContent = 'Recording in progress...';
       statusMsg.className = 'status-msg processing';
       startTimerUI();
+    } else if (data.is_transcribing) {
+      // Transcription/summarization running in background — auto-resume polling
+      statusMsg.textContent = 'Transcribing locally... (you can close this popup)';
+      statusMsg.className = 'status-msg processing';
+      pollForResults();
+    } else if (data.has_summary) {
+      statusMsg.textContent = 'Summary ready!';
+      statusMsg.className = 'status-msg';
     } else {
       statusMsg.textContent = 'Ready to record';
       statusMsg.className = 'status-msg';
@@ -137,10 +145,16 @@ async function pollStatus() {
       isRecording = false;
       updateRecordButton();
       stopTimerUI();
-      statusMsg.textContent = 'Processing...';
+      statusMsg.textContent = 'Transcribing locally... (you can close this popup)';
       statusMsg.className = 'status-msg processing';
       // Start polling for results
       pollForResults();
+    }
+
+    // Show live transcription status even if popup was reopened mid-transcription
+    if (data.is_transcribing && !isRecording) {
+      statusMsg.textContent = 'Transcribing locally...';
+      statusMsg.className = 'status-msg processing';
     }
 
     // Update audio level during recording
