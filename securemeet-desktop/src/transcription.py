@@ -28,8 +28,9 @@ from config import (
 # When running from source, use python + transcribe_worker.py directly.
 if getattr(sys, 'frozen', False):
     # Running as PyInstaller bundle
+    # Worker lives in dist/transcribe_worker/transcribe_worker.exe (--onedir via COLLECT)
     _EXE_DIR = Path(sys.executable).parent
-    _WORKER_CMD = [str(_EXE_DIR / "transcribe_worker.exe")]
+    _WORKER_CMD = [str(_EXE_DIR / "transcribe_worker" / "transcribe_worker.exe")]
 else:
     # Running from source
     _WORKER_CMD = [sys.executable, str(Path(__file__).parent / "transcribe_worker.py")]
