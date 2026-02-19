@@ -454,6 +454,16 @@ class SecureMeetApp(QMainWindow):
 
     def start_recording(self):
         """Start audio recording"""
+        # Block new recording if transcription is still running
+        if hasattr(self, 'worker') and self.worker.isRunning():
+            QMessageBox.information(
+                self,
+                "Processing in Progress",
+                "Please wait — the previous recording is still being transcribed.\n\n"
+                "It will finish shortly."
+            )
+            return
+
         device_id = self.device_combo.currentData()
 
         # Switch capture type based on selection
