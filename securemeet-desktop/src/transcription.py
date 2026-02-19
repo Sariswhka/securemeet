@@ -23,10 +23,16 @@ from config import (
     AUTO_DELETE_AUDIO_AFTER_TRANSCRIPTION
 )
 
-# Path to the worker script (same directory as this file)
-_WORKER_SCRIPT = Path(__file__).parent / "transcribe_worker.py"
-# Python executable to use for the subprocess
-_PYTHON_EXE = sys.executable
+# When bundled by PyInstaller, sys.frozen is set and sys.executable points to
+# the main SecureMeet.exe. The worker is a second bundled exe in the same folder.
+# When running from source, use python + transcribe_worker.py directly.
+if getattr(sys, 'frozen', False):
+    # Running as PyInstaller bundle
+    _EXE_DIR = Path(sys.executable).parent
+    _WORKER_CMD = [str(_EXE_DIR / "transcribe_worker.exe")]
+else:
+    # Running from source
+    _WORKER_CMD = [sys.executable, str(Path(__file__).parent / "transcribe_worker.py")]
 
 
 class LocalTranscriber:
@@ -69,7 +75,7 @@ class LocalTranscriber:
             env["WHISPER_MODEL"] = self.model_size
 
             proc = subprocess.Popen(
-                [_PYTHON_EXE, str(_WORKER_SCRIPT), str(audio_path), str(output_path)],
+                _WORKER_CMD + [str(audio_path), str(output_path)],
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
                 env=env

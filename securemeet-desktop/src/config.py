@@ -7,7 +7,7 @@ from pathlib import Path
 
 # Application Info
 APP_NAME = "SecureMeet"
-APP_VERSION = "1.0.0"
+APP_VERSION = "1.2.0"
 APP_DESCRIPTION = "Privacy-first meeting minutes"
 
 # Paths
