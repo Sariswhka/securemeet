@@ -3,7 +3,7 @@
   "name": "SecureMeet",
   "version": "2.0.0",
   "description": "Privacy-first meeting minutes - connects to SecureMeet Desktop for local audio capture, transcription, and summarization.",
-  "permissions": ["activeTab", "storage", "tabs", "scripting"],
+  "permissions": ["activeTab", "storage", "tabs", "scripting", "notifications", "alarms"],
   "host_permissions": [
     "https://*.zoom.us/*",
     "https://*.zoom.com/*",

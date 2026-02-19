@@ -37,6 +37,17 @@ document.addEventListener('DOMContentLoaded', () => {
   checkConnection();
   detectMeeting();
 
+  // If summary completed while popup was closed — load it immediately and clear badge
+  chrome.storage.local.get(['summaryReady'], (result) => {
+    if (result.summaryReady) {
+      chrome.storage.local.set({ summaryReady: false });
+      chrome.action.setBadgeText({ text: '' });
+      statusMsg.textContent = 'Summary ready!';
+      statusMsg.className = 'status-msg';
+      fetchResults();
+    }
+  });
+
   // Poll status every 2 seconds while popup is open
   pollInterval = setInterval(pollStatus, 2000);
 });
@@ -207,9 +218,11 @@ async function stopRecording() {
     stopTimerUI();
 
     if (data.success) {
-      statusMsg.textContent = 'Transcribing locally...';
+      statusMsg.textContent = 'Transcribing locally... (you can close this popup)';
       statusMsg.className = 'status-msg processing';
-      // Poll for transcript/summary results
+      // Tell background service worker to poll — works even when popup is closed
+      chrome.runtime.sendMessage({ action: 'startResultPolling' });
+      // Also poll locally while popup is open
       pollForResults();
     } else {
       statusMsg.textContent = data.error || 'Failed to stop recording';
